@@ -109,7 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hideOverlay() {
-        keyMonitor.stop()
+        // Note: we DO NOT stop the keyMonitor here. Hidden is not "off"; the
+        // user must still be able to press ⌃⌥⌘ H to toggle the overlay back
+        // on. The monitor stays running for the lifetime of the app.
         overlay.hide()
         statusItem.setActive(false)
         overlayVisible = false
@@ -158,7 +160,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isPopoverOpen { return }
 
         if event.modifierFlags.intersection([.command, .option, .control, .shift]) == Self.pickerMods {
-            switch Int(event.keyCode) {
+            let keyCode = Int(event.keyCode)
+
+            // Always-available even when the overlay is hidden, so the user
+            // can bring it back from anywhere.
+            switch keyCode {
+            case kVK_ANSI_H:
+                // Toggle the overlay. Hidden -> shown in picker mode; visible
+                // -> hidden. App stays running either way so the snippet
+                // library is still reachable from the menu-bar dot.
+                toggleOverlay()
+                return
+            case kVK_ANSI_Q:
+                // Panic-quit: instantly terminate the app. Use this if you
+                // want Ghost gone NOW, not just hidden.
+                NSApp.terminate(nil)
+                return
+            default:
+                break
+            }
+
+            // Everything else only makes sense when the overlay is visible.
+            guard overlayVisible else { return }
+
+            switch keyCode {
             case kVK_LeftArrow:
                 switch state.mode {
                 case .picker:
@@ -211,23 +236,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case kVK_ANSI_RightBracket:
                 bumpSessionOpacity(by: +0.05)
                 return
-            case kVK_ANSI_H:
-                // Immediate hide, regardless of mode. Brings dot to "off"
-                // state but the app stays running so the snippet library
-                // is still reachable from the menu-bar dot.
-                hideOverlay()
-                return
-            case kVK_ANSI_Q:
-                // Panic-quit: instantly terminate the app. Use this if you
-                // want Ghost gone NOW, not just hidden.
-                NSApp.terminate(nil)
-                return
             default:
                 return
             }
         }
 
-        guard state.mode == .typing else { return }
+        // Typing-mode characters need both the overlay visible and mode=typing.
+        // Hide pauses input so events don't silently advance the engine while
+        // the user thinks the overlay is "off".
+        guard overlayVisible, state.mode == .typing else { return }
 
         switch KeyEventParser.parseTyping(event) {
         case .ignore:
