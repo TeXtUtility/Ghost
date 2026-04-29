@@ -24,6 +24,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Modifier triple required for picker / overlay-control shortcuts: ⌃⌥⌘.
     private static let pickerMods: NSEvent.ModifierFlags = [.control, .option, .command]
 
+    // MARK: - Double-tap-Control state
+    //
+    // A "clean" tap is one where Control went down and back up quickly with
+    // no other key or modifier interaction in between. Two clean taps inside
+    // doubleTapMaxGap toggle the overlay (same effect as ⌃⌥⌘ H).
+    private var controlPressedAt: Date?
+    private var ctrlTapClean = false
+    private var lastCleanCtrlTapAt: Date?
+    private static let tapMaxDuration: TimeInterval = 0.25
+    private static let doubleTapMaxGap: TimeInterval = 0.4
+
     override init() {
         self.picker = Picker(library: library)
         self.engine = TypingEngine(snippet: Snippet(name: "", body: ""))
@@ -151,6 +162,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.sessionOpacity = max(0.05, min(1.0, next))
     }
 
+    /// Detect a quick double-tap of the Control key (no other key pressed
+    /// while it was held, two taps inside a short window) and toggle the
+    /// overlay if matched. Equivalent to ⌃⌥⌘ H but reachable without a
+    /// chord; useful as a thumb-only show/hide gesture.
+    private func handleFlagsChangedForCtrlDoubleTap(_ event: NSEvent) {
+        let mods = event.modifierFlags
+        let controlIsDown = mods.contains(.control)
+        let now = Date()
+
+        if controlIsDown && controlPressedAt == nil {
+            // Control just went down on its own (or as the first key of a
+            // chord we'll discover next).
+            controlPressedAt = now
+            ctrlTapClean = true
+            // If any other modifier is also already pressed, this isn't a
+            // clean Control tap.
+            if mods.intersection([.option, .command, .shift]) != [] {
+                ctrlTapClean = false
+            }
+            return
+        }
+
+        if controlIsDown && controlPressedAt != nil {
+            // Some other modifier pressed or released while Control is held.
+            ctrlTapClean = false
+            return
+        }
+
+        if !controlIsDown && controlPressedAt != nil {
+            // Control just came up.
+            let duration = now.timeIntervalSince(controlPressedAt!)
+            controlPressedAt = nil
+
+            guard ctrlTapClean, duration < Self.tapMaxDuration else {
+                lastCleanCtrlTapAt = nil
+                ctrlTapClean = false
+                return
+            }
+            ctrlTapClean = false
+
+            if let last = lastCleanCtrlTapAt,
+               now.timeIntervalSince(last) < Self.doubleTapMaxGap {
+                // Two clean taps inside the window: toggle.
+                lastCleanCtrlTapAt = nil
+                toggleOverlay()
+            } else {
+                // First clean tap; arm the second.
+                lastCleanCtrlTapAt = now
+            }
+        }
+    }
+
     // MARK: - Key routing
 
     private func handleKey(_ event: NSEvent) {
@@ -158,6 +221,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // text inside it — don't feed any keystrokes to the typing engine
         // and don't intercept their navigation either.
         if isPopoverOpen { return }
+
+        // Double-tap-Control gesture: detect on flagsChanged, invalidate
+        // on any keyDown that happens while Control is held.
+        if event.type == .flagsChanged {
+            handleFlagsChangedForCtrlDoubleTap(event)
+            return
+        }
+        if controlPressedAt != nil && event.type == .keyDown {
+            // The user pressed another key while Control was down: this is
+            // a chord (e.g. ⌃C, ⌃⌥⌘H), not a clean Control tap.
+            ctrlTapClean = false
+        }
 
         if event.modifierFlags.intersection([.command, .option, .control, .shift]) == Self.pickerMods {
             let keyCode = Int(event.keyCode)

@@ -9,10 +9,11 @@ final class GlobalKeyMonitor {
 
     func start() {
         guard globalMonitor == nil else { return }
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        let mask: NSEvent.EventTypeMask = [.keyDown, .flagsChanged]
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             self?.onEvent?(event)
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             self?.onEvent?(event)
             return event
         }

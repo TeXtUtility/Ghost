@@ -137,6 +137,7 @@ chosen so they never collide with whatever app you are typing into.
 | `⌃⌥⌘ 0`                   | Snap overlay back to its default position in the bottom-right corner.   |
 | `⌃⌥⌘ [` / `]`             | Frosted opacity down / up. Session-only, resets on app restart.         |
 | `⌃⌥⌘ H`                   | Toggle the overlay (hidden becomes visible in picker mode, and back).   |
+| Double-tap `Control`      | Toggle the overlay (same as `⌃⌥⌘ H`, no chord required).                |
 | `⌃⌥⌘ Q`                   | Panic-quit: terminate the app immediately.                              |
 
 The overlay is also draggable: click and hold anywhere on it and move it
