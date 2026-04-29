@@ -17,6 +17,9 @@ final class OverlayWindowController {
     /// user dragged it.
     private var hasPositioned = false
 
+    /// Right edge X to pin during resize so width changes grow leftward.
+    private var pinnedRightEdge: CGFloat = 0
+
     init(state: OverlayState, engine: TypingEngine, picker: Picker, settings: Settings) {
         self.settings = settings
 
@@ -37,6 +40,7 @@ final class OverlayWindowController {
         )
         panel = OverlayPanel(contentRect: NSRect(origin: origin, size: initialSize))
         panel.contentView = host
+        pinnedRightEdge = panel.frame.maxX
     }
 
     func show() {
@@ -50,6 +54,7 @@ final class OverlayWindowController {
                 offset: defaultEdgeOffset
             )
             panel.setFrame(NSRect(origin: origin, size: fitting), display: true)
+            pinnedRightEdge = panel.frame.maxX
             hasPositioned = true
         } else {
             refreshLayout()
@@ -62,14 +67,18 @@ final class OverlayWindowController {
     }
 
     /// Re-measure the SwiftUI content and resize the panel to fit, keeping the
-    /// panel's bottom-right point pinned so a size change never slides the
-    /// overlay offscreen or away from where the user dragged it.
+    /// panel's right edge pinned so width changes grow leftward.
     func refreshLayout() {
-        let oldFrame = panel.frame
-        let bottomRight = NSPoint(x: oldFrame.maxX, y: oldFrame.minY)
+        pinnedRightEdge = panel.frame.maxX
+        applyRightAnchoredResize()
+        DispatchQueue.main.async { [self] in
+            applyRightAnchoredResize()
+        }
+    }
 
+    private func applyRightAnchoredResize() {
         let newSize = currentFittingSize()
-        let newOrigin = NSPoint(x: bottomRight.x - newSize.width, y: bottomRight.y)
+        let newOrigin = NSPoint(x: pinnedRightEdge - newSize.width, y: panel.frame.minY)
         panel.setFrame(NSRect(origin: newOrigin, size: newSize), display: true)
     }
 
@@ -85,6 +94,7 @@ final class OverlayWindowController {
             offset: defaultEdgeOffset
         )
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        pinnedRightEdge = panel.frame.maxX
     }
 
     private func currentFittingSize() -> NSSize {
