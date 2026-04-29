@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.onToggleOverlay = { [weak self] in self?.toggleOverlay() }
         statusItem.onQuit = { NSApp.terminate(nil) }
 
-        keyMonitor.onEvent = { [weak self] event in self?.handleKey(event) }
+        keyMonitor.onEvent = { [weak self] event in self?.handleKey(event) ?? false }
 
         configurePopover()
 
@@ -216,17 +216,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Key routing
 
-    private func handleKey(_ event: NSEvent) {
+    /// Returns true when the event was consumed (suppress system delivery so
+    /// the focused app doesn't beep on unhandled chords). Returns false when
+    /// the keystroke should pass through to the user's real document.
+    private func handleKey(_ event: NSEvent) -> Bool {
         // While the snippet-library popover is open, the user is editing
         // text inside it — don't feed any keystrokes to the typing engine
         // and don't intercept their navigation either.
-        if isPopoverOpen { return }
+        if isPopoverOpen { return false }
 
         // Double-tap-Control gesture: detect on flagsChanged, invalidate
         // on any keyDown that happens while Control is held.
         if event.type == .flagsChanged {
             handleFlagsChangedForCtrlDoubleTap(event)
-            return
+            return false
         }
         if controlPressedAt != nil && event.type == .keyDown {
             // The user pressed another key while Control was down: this is
@@ -245,18 +248,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // -> hidden. App stays running either way so the snippet
                 // library is still reachable from the menu-bar dot.
                 toggleOverlay()
-                return
+                return true
             case kVK_ANSI_Q:
                 // Panic-quit: instantly terminate the app. Use this if you
                 // want Ghost gone NOW, not just hidden.
                 NSApp.terminate(nil)
-                return
+                return true
             default:
                 break
             }
 
             // Everything else only makes sense when the overlay is visible.
-            guard overlayVisible else { return }
+            // Still consume the chord so the focused app doesn't beep.
+            guard overlayVisible else { return true }
 
             switch keyCode {
             case kVK_LeftArrow:
@@ -267,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .typing:
                     engine.prevWord()
                 }
-                return
+                return true
             case kVK_RightArrow:
                 switch state.mode {
                 case .picker:
@@ -276,54 +280,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .typing:
                     engine.nextWord()
                 }
-                return
+                return true
+            case kVK_UpArrow:
+                bumpSessionOpacity(by: +0.05)
+                return true
+            case kVK_DownArrow:
+                bumpSessionOpacity(by: -0.05)
+                return true
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 if state.mode == .picker {
                     enterTypingMode()
                 }
-                return
+                return true
             case kVK_Escape:
                 if state.mode == .typing {
                     returnToPicker()
                 } else {
                     hideOverlay()
                 }
-                return
+                return true
             case kVK_ANSI_B:
                 // Mid-typing escape hatch: bail out of the current snippet
                 // and go back to the picker menu. No-op in picker mode.
                 if state.mode == .typing {
                     returnToPicker()
                 }
-                return
+                return true
             case kVK_ANSI_Equal, kVK_ANSI_KeypadPlus:
                 bumpFontSize(by: +1)
-                return
+                return true
             case kVK_ANSI_Minus, kVK_ANSI_KeypadMinus:
                 bumpFontSize(by: -1)
-                return
+                return true
             case kVK_ANSI_0, kVK_ANSI_Keypad0:
                 overlay.snapToCorner()
-                return
-            case kVK_ANSI_LeftBracket:
-                bumpSessionOpacity(by: -0.05)
-                return
-            case kVK_ANSI_RightBracket:
-                bumpSessionOpacity(by: +0.05)
-                return
+                return true
             default:
-                return
+                // Unrecognized ⌃⌥⌘ chord: consume it so the focused app
+                // doesn't beep. Reserves the whole modifier triple for us.
+                return true
             }
         }
 
         // Typing-mode characters need both the overlay visible and mode=typing.
         // Hide pauses input so events don't silently advance the engine while
         // the user thinks the overlay is "off".
-        guard overlayVisible, state.mode == .typing else { return }
+        guard overlayVisible, state.mode == .typing else { return false }
 
         switch KeyEventParser.parseTyping(event) {
         case .ignore:
-            return
+            return false
         case .backspace:
             engine.backspace()
         case .characters(let chars):
@@ -331,10 +337,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 engine.handle(character: ch)
                 if engine.isComplete {
                     returnToPicker()
-                    return
+                    return false
                 }
             }
         }
+        // Typing keystrokes are observed but never consumed — the user is
+        // typing into their real document, not into Ghost.
+        return false
     }
 }
 

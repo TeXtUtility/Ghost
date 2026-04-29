@@ -1,27 +1,74 @@
-import AppKit
+@preconcurrency import AppKit
 import Carbon.HIToolbox
+@preconcurrency import CoreGraphics
 
 @MainActor
 final class GlobalKeyMonitor {
-    var onEvent: ((NSEvent) -> Void)?
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    /// Returns true if the event was consumed (suppress system delivery).
+    /// Returning false lets the keystroke reach the focused app normally.
+    var onEvent: ((NSEvent) -> Bool)?
+
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
 
     func start() {
-        guard globalMonitor == nil else { return }
-        let mask: NSEvent.EventTypeMask = [.keyDown, .flagsChanged]
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
-            self?.onEvent?(event)
+        guard eventTap == nil else { return }
+        let mask: CGEventMask =
+            (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.flagsChanged.rawValue)
+
+        let userInfo = Unmanaged.passUnretained(self).toOpaque()
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: GlobalKeyMonitor.tapCallback,
+            userInfo: userInfo
+        ) else {
+            // Tap creation fails without Accessibility — the prompt at launch
+            // covers this, but if the user denied we silently no-op rather
+            // than crash. They'll see the overlay but it won't react.
+            return
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-            self?.onEvent?(event)
-            return event
-        }
+        eventTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
     }
 
     func stop() {
-        if let g = globalMonitor { NSEvent.removeMonitor(g); globalMonitor = nil }
-        if let l = localMonitor  { NSEvent.removeMonitor(l); localMonitor = nil }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+        }
+        eventTap = nil
+        runLoopSource = nil
+    }
+
+    private static let tapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else { return Unmanaged.passUnretained(event) }
+        let monitor = Unmanaged<GlobalKeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
+
+        // The system disables our tap if it takes too long or under certain
+        // user-input conditions. Re-enable so the next keystroke works.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            MainActor.assumeIsolated {
+                if let tap = monitor.eventTap {
+                    CGEvent.tapEnable(tap: tap, enable: true)
+                }
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        let consumed = MainActor.assumeIsolated { () -> Bool in
+            guard let nsEvent = NSEvent(cgEvent: event) else { return false }
+            return monitor.onEvent?(nsEvent) ?? false
+        }
+        return consumed ? nil : Unmanaged.passUnretained(event)
     }
 }
 

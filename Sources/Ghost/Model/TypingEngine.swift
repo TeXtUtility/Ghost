@@ -54,11 +54,24 @@ final class TypingEngine {
         lastOutcome = .ignored
     }
 
+    /// Map curly quotes, en/em dashes, and non-breaking space to their
+    /// straight ASCII equivalents so a snippet pasted from a doc with smart
+    /// punctuation still matches what the user types from a normal keyboard.
+    static func normalize(_ ch: Character) -> Character {
+        switch ch {
+        case "\u{2018}", "\u{2019}", "\u{201B}", "\u{2032}": return "'"
+        case "\u{201C}", "\u{201D}", "\u{201F}", "\u{2033}": return "\""
+        case "\u{2013}", "\u{2014}", "\u{2212}": return "-"
+        case "\u{00A0}", "\u{2009}", "\u{202F}": return " "
+        default: return ch
+        }
+    }
+
     @discardableResult
     func handle(character: Character) -> TypingOutcome {
         guard !isComplete else { lastOutcome = .ignored; return .ignored }
         let outcome: TypingOutcome
-        if character == chars[position] {
+        if Self.normalize(character) == Self.normalize(chars[position]) {
             position += 1
             history.append(.advance)
             outcome = isComplete ? .complete : .advanced
@@ -226,7 +239,7 @@ final class TypingEngine {
         for i in start...(chars.count - nLen) {
             var ok = true
             for j in 0..<nLen {
-                let cLower = Character(String(chars[i + j]).lowercased())
+                let cLower = Character(String(Self.normalize(chars[i + j])).lowercased())
                 if cLower != needleLower[j] { ok = false; break }
             }
             if ok { return i + nLen }
@@ -275,6 +288,6 @@ final class TypingEngine {
     }
 
     private func lowercased(_ word: [Character]) -> [Character] {
-        word.flatMap { Array(String($0).lowercased()) }
+        word.flatMap { Array(String(Self.normalize($0)).lowercased()) }
     }
 }
