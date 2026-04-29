@@ -135,6 +135,9 @@ chosen so they never collide with whatever app you are typing into.
 | `⌃⌥⌘ +` or `=`            | Scale the overlay up.                                                   |
 | `⌃⌥⌘ -`                   | Scale the overlay down.                                                 |
 | `⌃⌥⌘ 0`                   | Snap overlay back to its default position in the bottom-right corner.   |
+| `⌃⌥⌘ [` / `]`             | Frosted opacity down / up. Session-only, resets on app restart.         |
+| `⌃⌥⌘ H`                   | Immediate hide (overlay vanishes; right-click the dot to bring it back). |
+| `⌃⌥⌘ Q`                   | Panic-quit: terminate the app immediately.                              |
 
 The overlay is also draggable: click and hold anywhere on it and move it
 to wherever feels least intrusive.

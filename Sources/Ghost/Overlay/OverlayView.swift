@@ -32,7 +32,7 @@ struct OverlayView: View {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5)
         )
-        .opacity(settings.opacity)
+        .opacity(state.sessionOpacity ?? settings.opacity)
         .fixedSize()
     }
 }

@@ -139,6 +139,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.refreshLayout()
     }
 
+    /// Adjust the session-only opacity override. The lower bound (0.05) is
+    /// "barely visible but never fully hidden" so the user can't
+    /// accidentally render the overlay completely invisible with a few
+    /// keypresses and then wonder where it went.
+    private func bumpSessionOpacity(by delta: Double) {
+        let current = state.sessionOpacity ?? settings.opacity
+        let next = current + delta
+        state.sessionOpacity = max(0.05, min(1.0, next))
+    }
+
     // MARK: - Key routing
 
     private func handleKey(_ event: NSEvent) {
@@ -194,6 +204,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             case kVK_ANSI_0, kVK_ANSI_Keypad0:
                 overlay.snapToCorner()
+                return
+            case kVK_ANSI_LeftBracket:
+                bumpSessionOpacity(by: -0.05)
+                return
+            case kVK_ANSI_RightBracket:
+                bumpSessionOpacity(by: +0.05)
+                return
+            case kVK_ANSI_H:
+                // Immediate hide, regardless of mode. Brings dot to "off"
+                // state but the app stays running so the snippet library
+                // is still reachable from the menu-bar dot.
+                hideOverlay()
+                return
+            case kVK_ANSI_Q:
+                // Panic-quit: instantly terminate the app. Use this if you
+                // want Ghost gone NOW, not just hidden.
+                NSApp.terminate(nil)
                 return
             default:
                 return
