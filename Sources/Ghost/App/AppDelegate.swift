@@ -90,6 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func togglePopover() {
+        // While the overlay is hidden, left-clicking the menu-bar dot is
+        // inert. The user explicitly hid the overlay, so opening the
+        // snippet-library popover from this entry point would feel like
+        // unhiding through the side door. Right-click → Toggle Overlay
+        // (or ⌃⌥⌘ H / double-tap Control) is the way back.
+        guard overlayVisible else { return }
         guard let anchor = statusItem.anchorButton else { return }
         if popover.isShown {
             popover.close()
