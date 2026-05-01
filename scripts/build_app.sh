@@ -3,7 +3,16 @@
 # Build Ghost as a real macOS .app bundle and install it to ~/Applications.
 #
 # Usage:
-#   ./scripts/build_app.sh [path/to/icon.png]
+#   ./scripts/build_app.sh [--reset-permissions] [path/to/icon.png]
+#
+# Flags:
+#   --reset-permissions, -r
+#       After install, wipe the existing Accessibility grant for Ghost
+#       (tccutil reset) so macOS re-prompts on next launch. Use this when
+#       upgrading across a change in event-tap level (e.g. the move from
+#       .cgSessionEventTap to .cghidEventTap), or when the grant seems
+#       stuck. Routine rebuilds do NOT need this — the stable cert from
+#       setup_dev_cert.sh keeps the existing grant valid.
 #
 # Steps:
 #   1. Compile the SPM target in release mode.
@@ -15,6 +24,7 @@
 #      (run scripts/setup_dev_cert.sh once to install one), otherwise
 #      ad-hoc sign with a warning.
 #   5. Install to ~/Applications/Ghost.app, replacing any prior copy.
+#   6. Optionally reset the Accessibility grant (--reset-permissions).
 #
 # Note: macOS Accessibility permission is bound to the binary's code-
 # signing "designated requirement". Ad-hoc signatures change every build
@@ -26,7 +36,28 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ICON_SRC="${1:-$PKG_DIR/logo.png}"
+
+RESET_PERMISSIONS=0
+ICON_SRC=""
+for arg in "$@"; do
+    case "$arg" in
+        --reset-permissions|-r)
+            RESET_PERMISSIONS=1
+            ;;
+        -h|--help)
+            sed -n '2,12p' "$0"
+            exit 0
+            ;;
+        -*)
+            echo "error: unknown flag '$arg'" >&2
+            exit 1
+            ;;
+        *)
+            ICON_SRC="$arg"
+            ;;
+    esac
+done
+ICON_SRC="${ICON_SRC:-$PKG_DIR/logo.png}"
 
 APP_NAME="Ghost"
 BUNDLE_ID="com.textutility.ghost"
@@ -160,10 +191,24 @@ touch "$APP_PATH"
 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
     -f "$APP_PATH" >/dev/null 2>&1 || true
 
+if [[ "$RESET_PERMISSIONS" -eq 1 ]]; then
+    echo "==> Resetting Accessibility grant for $BUNDLE_ID"
+    if tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null; then
+        echo "  ok — macOS will prompt on next launch."
+    else
+        echo "  warning: tccutil reset failed (no prior grant, or TCC blocked)." >&2
+    fi
+fi
+
 echo
 echo "Done."
 echo "  $APP_PATH"
-if [[ "$MATCH_COUNT" -eq 1 ]]; then
+if [[ "$RESET_PERMISSIONS" -eq 1 ]]; then
+    echo
+    echo "Accessibility grant reset. Launch Ghost and approve the prompt in"
+    echo "System Settings, Privacy & Security, Accessibility, then quit"
+    echo "& relaunch Ghost."
+elif [[ "$MATCH_COUNT" -eq 1 ]]; then
     echo
     echo "Signed with stable cert. Accessibility grant should persist across rebuilds."
     echo "If this is the first install, grant it once in System Settings,"
