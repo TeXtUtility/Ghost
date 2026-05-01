@@ -18,8 +18,11 @@ final class GlobalKeyMonitor {
             (1 << CGEventType.flagsChanged.rawValue)
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
+        // .cghidEventTap is upstream of the window server, so we intercept
+        // ⌃↑ and ⌃↓ (Mission Control / App Exposé) before macOS swallows
+        // them — without this the ⌃⌥⌘ ↑/↓ opacity binds never fire.
         guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
+            tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
