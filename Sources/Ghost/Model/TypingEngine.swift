@@ -148,6 +148,11 @@ final class TypingEngine {
 
     // MARK: - Smart word resync
 
+    /// Cap on how far ahead a resync may jump. Roughly a sentence or two of
+    /// English prose — covers "I inserted a word or sentence" without
+    /// reaching halfway across the snippet on a coincidental phrase match.
+    private static let maxResyncJump = 200
+
     /// If the user just typed a word (terminated by whitespace) that doesn't
     /// match the snippet word at the cursor but DOES appear later in the
     /// snippet, jump the cursor to right after that later occurrence.
@@ -168,6 +173,11 @@ final class TypingEngine {
         // Search forward, starting after the current word, for typedLower.
         let searchStart = wordEndingAtCursor()?.upperBound ?? position
         guard let foundRange = findWord(typedLower, from: searchStart) else { return }
+        // Cap the jump distance so a coincidental match far ahead — common
+        // words like "the" or "and" will appear many times in long text —
+        // doesn't yank the cursor across the snippet. Resync is meant for
+        // small detours, not chapter-skipping.
+        guard foundRange.lowerBound - position <= Self.maxResyncJump else { return }
 
         var newPos = foundRange.upperBound
         // Consume one trailing whitespace, since the user already typed the
@@ -220,6 +230,13 @@ final class TypingEngine {
             if let foundEnd = findSubstring(needle, from: position) {
                 let foundStart = foundEnd - needle.count
                 guard foundStart - position >= minJumpDistance else { continue }
+                // Cap the jump distance: resync is for "I inserted/swapped
+                // a word or short phrase," not for skipping paragraphs. A
+                // far-ahead match on a 4-char suffix is almost always a
+                // false positive on common letter sequences, so we'd
+                // rather keep the user where they are and let them keep
+                // typing or backspace out.
+                guard foundStart - position <= Self.maxResyncJump else { continue }
                 position = foundEnd
                 pendingMismatches = 0
                 consecutiveMismatches = 0

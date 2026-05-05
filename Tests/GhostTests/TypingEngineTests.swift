@@ -278,6 +278,34 @@ struct TypingEngineTests {
         #expect(e.consecutiveMismatches == 0)
     }
 
+    @Test func resyncIgnoresMatchesFarAhead() {
+        // A coincidental word match many hundreds of chars ahead must not
+        // yank the cursor across the snippet. Resync is for small detours.
+        let filler = String(repeating: "x ", count: 200) // 400 chars of noise
+        let e = engine("the cat \(filler)the dog ran")
+        for c in "the " { e.handle(character: c) }
+        // User types a word that doesn't match "cat" and exists only far
+        // ahead ("dog" appears once, well past the 200-char cap).
+        for c in "dog " { e.handle(character: c) }
+        // Engine should NOT have jumped — the only "dog" is past the cap.
+        #expect(e.position == 4)
+        #expect(e.pendingMismatches > 0)
+    }
+
+    @Test func fuzzyResyncIgnoresMatchesFarAhead() {
+        // Long suffix matching a phrase ~500 chars ahead is almost always a
+        // coincidence on common letter sequences. Don't jump.
+        let filler = String(repeating: "abcd ", count: 100) // 500 chars
+        let e = engine("hello world \(filler)goodbye world")
+        for c in "hello " { e.handle(character: c) }
+        // Type a word substitution that doesn't match "world" but whose
+        // suffix " world" appears far past the cap.
+        for c in "earth world" { e.handle(character: c) }
+        // No jump — cursor stayed near the original position rather than
+        // teleporting to the far "goodbye world".
+        #expect(e.position < 100)
+    }
+
     @Test func resyncFindsFirstOccurrenceAfterCursor() {
         // typedWord could match an earlier occurrence too — but resync only
         // searches forward from the cursor, so the earlier "fox" before the
