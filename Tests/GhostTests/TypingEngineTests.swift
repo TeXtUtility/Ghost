@@ -285,9 +285,9 @@ struct TypingEngineTests {
         let e = engine("the cat \(filler)the dog ran")
         for c in "the " { e.handle(character: c) }
         // User types a word that doesn't match "cat" and exists only far
-        // ahead ("dog" appears once, well past the 200-char cap).
+        // ahead ("dog" appears once, hundreds of words past the cursor).
         for c in "dog " { e.handle(character: c) }
-        // Engine should NOT have jumped — the only "dog" is past the cap.
+        // Engine should NOT have jumped — the only "dog" is past the window.
         #expect(e.position == 4)
         #expect(e.pendingMismatches > 0)
     }
@@ -304,6 +304,44 @@ struct TypingEngineTests {
         // No jump — cursor stayed near the original position rather than
         // teleporting to the far "goodbye world".
         #expect(e.position < 100)
+    }
+
+    @Test func resyncSkipsUpToFiveWords() {
+        // "red big old wet tan" is five words — the most a resync may skip.
+        let e = engine("the red big old wet tan fox jumps")
+        for c in "the " { e.handle(character: c) }
+        for c in "fox " { e.handle(character: c) }
+        #expect(e.position == 28) // right after "fox "
+        for c in "jumps" { e.handle(character: c) }
+        #expect(e.isComplete)
+    }
+
+    @Test func resyncDoesNotSkipSixWords() {
+        // Same as above with one more word in the gap: "fox" is now six
+        // words past the cursor, so neither resync path may jump to it.
+        let e = engine("the red big old wet tan hot fox jumps")
+        for c in "the " { e.handle(character: c) }
+        for c in "fox " { e.handle(character: c) }
+        #expect(e.position == 4)
+        #expect(e.pendingMismatches == 4)
+    }
+
+    @Test func resyncWindowCountsPartialWordAtCursor() {
+        // Cursor partway through "red": the rest of it counts as the first
+        // skipped word, so "fox" after five more words is out of reach.
+        let e = engine("the red big old wet tan hot fox jumps")
+        for c in "the re" { e.handle(character: c) }
+        #expect(e.position == 6)
+        for c in "fox " { e.handle(character: c) }
+        #expect(e.position == 6)
+    }
+
+    @Test func fuzzyResyncHasCharacterBackstopWithoutSpaces() {
+        // Text with no spaces is one long "word", so the word window alone
+        // would reach the end. The character backstop still stops a jump.
+        let e = engine("start" + String(repeating: "z", count: 100) + "qwerty")
+        for c in "qwer" { e.handle(character: c) }
+        #expect(e.position == 0)
     }
 
     @Test func resyncFindsFirstOccurrenceAfterCursor() {

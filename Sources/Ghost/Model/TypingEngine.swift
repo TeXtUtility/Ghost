@@ -148,10 +148,31 @@ final class TypingEngine {
 
     // MARK: - Smart word resync
 
-    /// Cap on how far ahead a resync may jump. Roughly a sentence or two of
-    /// English prose — covers "I inserted a word or sentence" without
-    /// reaching halfway across the snippet on a coincidental phrase match.
-    private static let maxResyncJump = 200
+    /// Most snippet words a resync may skip over. Resync is for "I dropped
+    /// or swapped a word or two", not for leaping ahead to a phrase that
+    /// happens to match further down. A word the cursor is partway through
+    /// counts as one.
+    private static let maxResyncWords = 5
+
+    /// Character backstop on the same jump, for text with few or no spaces
+    /// (code, URLs, CJK) where "5 words" could otherwise mean the whole
+    /// snippet.
+    private static let maxResyncJump = 80
+
+    /// Latest index a resync match may start at: the first character of the
+    /// word after the `maxResyncWords` words starting at the cursor, or the
+    /// character backstop, whichever comes first.
+    private func resyncLimit() -> Int {
+        var i = position
+        var words = 0
+        while i < chars.count {
+            if chars[i].isWhitespace { i += 1; continue }
+            if words == Self.maxResyncWords { break }
+            words += 1
+            while i < chars.count, !chars[i].isWhitespace { i += 1 }
+        }
+        return min(i, position + Self.maxResyncJump)
+    }
 
     /// If the user just typed a word (terminated by whitespace) that doesn't
     /// match the snippet word at the cursor but DOES appear later in the
@@ -171,13 +192,12 @@ final class TypingEngine {
         }
 
         // Search forward, starting after the current word, for typedLower.
+        // Only look within the next few words: common words like "the" or
+        // "and" appear all over long text, and a match further out is far
+        // more likely a coincidence than the spot the user meant.
         let searchStart = wordEndingAtCursor()?.upperBound ?? position
-        guard let foundRange = findWord(typedLower, from: searchStart) else { return }
-        // Cap the jump distance so a coincidental match far ahead — common
-        // words like "the" or "and" will appear many times in long text —
-        // doesn't yank the cursor across the snippet. Resync is meant for
-        // small detours, not chapter-skipping.
-        guard foundRange.lowerBound - position <= Self.maxResyncJump else { return }
+        guard let foundRange = findWord(typedLower, from: searchStart, maxStart: resyncLimit())
+        else { return }
 
         var newPos = foundRange.upperBound
         // Consume one trailing whitespace, since the user already typed the
@@ -220,6 +240,11 @@ final class TypingEngine {
         guard lookback >= minLen else { return }
         let recent = Array(inputBuffer.suffix(lookback))
         let recentLower = lowercased(recent)
+        // A far-ahead match on a 4-char suffix is almost always a false
+        // positive on common letter sequences, so only matches within the
+        // next few words count; past that, keep the user where they are and
+        // let them keep typing or backspace out.
+        let limit = resyncLimit()
 
         // startIdx = 0 → full lookback (longest suffix). Increasing startIdx
         // shortens the suffix from the FRONT. Stop once we'd go below minLen.
@@ -227,16 +252,9 @@ final class TypingEngine {
         guard upperStart >= 0 else { return }
         for startIdx in 0...upperStart {
             let needle = Array(recentLower[startIdx...])
-            if let foundEnd = findSubstring(needle, from: position) {
+            if let foundEnd = findSubstring(needle, from: position, maxStart: limit) {
                 let foundStart = foundEnd - needle.count
                 guard foundStart - position >= minJumpDistance else { continue }
-                // Cap the jump distance: resync is for "I inserted/swapped
-                // a word or short phrase," not for skipping paragraphs. A
-                // far-ahead match on a 4-char suffix is almost always a
-                // false positive on common letter sequences, so we'd
-                // rather keep the user where they are and let them keep
-                // typing or backspace out.
-                guard foundStart - position <= Self.maxResyncJump else { continue }
                 position = foundEnd
                 pendingMismatches = 0
                 consecutiveMismatches = 0
@@ -247,13 +265,15 @@ final class TypingEngine {
         }
     }
 
-    /// Linear case-insensitive substring search starting at `start` in `chars`.
-    /// Returns the index just after the match, or nil if not found.
-    private func findSubstring(_ needleLower: [Character], from start: Int) -> Int? {
+    /// Linear case-insensitive substring search in `chars` for a match that
+    /// starts between `start` and `maxStart` inclusive. Returns the index
+    /// just after the match, or nil if not found.
+    private func findSubstring(_ needleLower: [Character], from start: Int, maxStart: Int) -> Int? {
         guard !needleLower.isEmpty, start <= chars.count else { return nil }
         let nLen = needleLower.count
-        guard chars.count - start >= nLen else { return nil }
-        for i in start...(chars.count - nLen) {
+        let last = min(chars.count - nLen, maxStart)
+        guard last >= start else { return nil }
+        for i in start...last {
             var ok = true
             for j in 0..<nLen {
                 let cLower = Character(String(Self.normalize(chars[i + j])).lowercased())
@@ -286,11 +306,14 @@ final class TypingEngine {
         return s..<e
     }
 
-    private func findWord(_ lowerWord: [Character], from start: Int) -> Range<Int>? {
+    /// First word equal to `lowerWord` that starts between `start` and
+    /// `maxStart` inclusive.
+    private func findWord(_ lowerWord: [Character], from start: Int, maxStart: Int) -> Range<Int>? {
         var i = start
         while i < chars.count {
             while i < chars.count, chars[i].isWhitespace { i += 1 }
             let wordStart = i
+            guard wordStart <= maxStart else { break }
             while i < chars.count, !chars[i].isWhitespace { i += 1 }
             let wordEnd = i
             guard wordEnd > wordStart else { break }

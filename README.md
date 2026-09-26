@@ -22,6 +22,8 @@ browser, or email client, wherever the typing is actually going.
   "quickly"), insert a phrase, or paraphrase. Ghost looks at your last
   few keystrokes and snaps the cursor forward to the closest matching
   point in the snippet, so a small detour does not put you back at zero.
+  A snap never skips more than five words, so a phrase that happens to
+  match further down can't pull you away from where you are.
 - **Snippet library**: paste passages into the menu-bar editor, organize
   them, or load straight from your clipboard for one-shot use.
   Everything stays local to your Mac.
