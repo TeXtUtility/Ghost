@@ -5,7 +5,7 @@ import Carbon.HIToolbox
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = Settings()
-    private let library = SnippetLibrary.withSamples()
+    private let library = SnippetLibrary.load()
     private let state = OverlayState()
     private let picker: Picker
     private let engine: TypingEngine
@@ -54,6 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.onLeftClick = { [weak self] in self?.togglePopover() }
         statusItem.onToggleOverlay = { [weak self] in self?.toggleOverlay() }
         statusItem.onQuit = { NSApp.terminate(nil) }
+        statusItem.isAutoSkipOn = { [weak self] in self?.settings.autoSkip ?? true }
+        statusItem.onToggleAutoSkip = { [weak self] in
+            guard let self else { return }
+            settings.autoSkip.toggle()
+            engine.autoSkip = settings.autoSkip
+        }
+        engine.autoSkip = settings.autoSkip
 
         keyMonitor.onEvent = { [weak self] event in self?.handleKey(event) ?? false }
 

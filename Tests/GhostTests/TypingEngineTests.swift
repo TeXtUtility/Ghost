@@ -235,6 +235,21 @@ struct TypingEngineTests {
         #expect(e.isComplete)
     }
 
+    @Test func autoSkipOffKeepsWordResyncFromJumping() {
+        let e = engine("the quick brown fox jumps")
+        e.autoSkip = false
+        for c in "the fox " { e.handle(character: c) }
+        #expect(e.position == 4)
+        #expect(e.pendingMismatches == 4)
+    }
+
+    @Test func autoSkipOffKeepsFuzzyResyncFromJumping() {
+        let e = engine("he ran happily there")
+        e.autoSkip = false
+        for c in "he ran quickly there" { e.handle(character: c) }
+        #expect(!e.isComplete)
+    }
+
     @Test func fuzzyResyncDoesNotFireOnCorrectTyping() {
         // No mismatches, no fuzzy jumps. Engine should track the user
         // character-by-character even when the snippet has internal repeats.

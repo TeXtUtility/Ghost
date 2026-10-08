@@ -19,6 +19,9 @@ final class TypingEngine {
     /// Used as a confidence signal for the fuzzy resync — we only look for
     /// forward jumps once the user is clearly off course.
     private(set) var consecutiveMismatches: Int = 0
+    /// Off: the cursor moves only on the right key. Neither resync jumps ahead
+    /// when the typed text goes off script; ⌃⌥⌘← and → still move by word.
+    var autoSkip = true
 
     private enum Action { case advance, mismatch }
     private var history: [Action] = []
@@ -91,14 +94,14 @@ final class TypingEngine {
 
         // On word boundary: try a whole-word resync (cheap, high-precision —
         // jumps to a later occurrence of the just-typed word).
-        if character.isWhitespace { attemptResync() }
+        if autoSkip && character.isWhitespace { attemptResync() }
 
         // Continuous fuzzy resync: after the user has typed 2+ wrong chars in
         // a row, look for the longest recent suffix that appears as a
         // substring further in the snippet and jump there. This handles
         // word substitutions ("happily" → "quickly") and insertions because
         // the trailing characters (e.g. " there") usually match.
-        if outcome == .mismatch && consecutiveMismatches >= 2 {
+        if autoSkip && outcome == .mismatch && consecutiveMismatches >= 2 {
             attemptFuzzyResync()
         }
 

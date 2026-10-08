@@ -26,6 +26,10 @@ final class Settings {
     var windowChars: Int {
         didSet { ud.set(windowChars, forKey: K.windowChars) }
     }
+    /// Jump ahead to where the user is when they go off script (see TypingEngine.autoSkip).
+    var autoSkip: Bool {
+        didSet { ud.set(autoSkip, forKey: K.autoSkip) }
+    }
 
     private let ud = UserDefaults.standard
 
@@ -34,6 +38,7 @@ final class Settings {
         static let fontSize = "ghost.fontSize"
         static let opacity = "ghost.opacity"
         static let windowChars = "ghost.windowChars"
+        static let autoSkip = "ghost.autoSkip"
     }
 
     init() {
@@ -44,5 +49,6 @@ final class Settings {
         self.opacity = storedOpacity > 0 ? storedOpacity : 0.85
         let storedChars = ud.integer(forKey: K.windowChars)
         self.windowChars = storedChars > 0 ? storedChars : 18
+        self.autoSkip = ud.object(forKey: K.autoSkip) as? Bool ?? true
     }
 }

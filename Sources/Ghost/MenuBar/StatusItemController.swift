@@ -6,6 +6,8 @@ final class StatusItemController {
     var onLeftClick: (() -> Void)?
     var onToggleOverlay: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onToggleAutoSkip: (() -> Void)?
+    var isAutoSkipOn: (() -> Bool)?
 
     /// The menu-bar button used to anchor popovers / position UI relative
     /// to the status item.
@@ -40,6 +42,11 @@ final class StatusItemController {
         let toggle = NSMenuItem(title: "Toggle Overlay", action: #selector(toggleFromMenu), keyEquivalent: "g")
         toggle.target = self
         menu.addItem(toggle)
+        let autoSkip = NSMenuItem(title: "Skip Ahead When Off Script", action: #selector(toggleAutoSkipFromMenu), keyEquivalent: "")
+        autoSkip.target = self
+        autoSkip.state = (isAutoSkipOn?() ?? true) ? .on : .off
+        autoSkip.toolTip = "Off: Ghost moves only when you type the right key"
+        menu.addItem(autoSkip)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Ghost", action: #selector(quitFromMenu), keyEquivalent: "q")
         quit.target = self
@@ -51,6 +58,7 @@ final class StatusItemController {
 
     @objc private func toggleFromMenu() { onToggleOverlay?() }
     @objc private func quitFromMenu() { onQuit?() }
+    @objc private func toggleAutoSkipFromMenu() { onToggleAutoSkip?() }
 
     private static func makeDotImage(filled: Bool) -> NSImage {
         let size = NSSize(width: 14, height: 14)
